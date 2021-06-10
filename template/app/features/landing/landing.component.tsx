@@ -1,175 +1,177 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Dimensions,
-  FlatList,
+  Animated,
+  ScrollView,
   Image,
   TouchableOpacity,
 } from 'react-native';
-import { connect } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
-import { useTranslation } from 'react-i18next';
+import { connect, ConnectedProps } from 'react-redux';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
-import { SquareCard } from '&styled/cards/squareCard.styled';
-import AreebaLogo from '&assets/images/landing/areeba_logo.svg';
-import RentsLogo from '&assets/images/landing/rents_logo.svg';
-import FormsLogo from '&assets/images/landing/form.png';
-import ApiLogo from '&assets/images/landing/api.png';
-import ReduxLogo from '&assets/images/landing/redux.png';
-import DatabaseLogo from '&assets/images/landing/database.png';
+import { RootState } from '&store/store';
+import { ContentPlaceHolder } from '&styled/loaders/contentLoader.styled';
+import { Title } from '&app/components/styled/titles/titles.styled';
+import { NewsContainer } from '&styled/content/newsContainer.styled';
 import { landingActions } from './landing.slice';
+import { historyActions } from '../history/history.slice';
+import { getCurrentTimeStamp } from '&app/utils/general';
+import { colorPalette } from '&app/config/colors';
 
 const { width } = Dimensions.get('window');
 
-const LandingComponent = () => {
-  const { t, i18n } = useTranslation();
+type ReduxProps = ConnectedProps<typeof connector>;
+
+const LandingComponent = (props: ReduxProps) => {
+  const {
+    getNewsInfo,
+    news,
+    pending,
+    setLanding,
+    viewedHistory,
+    setHistory,
+  } = props;
   const navigation = useNavigation();
-  const data = [
-    {
-      label: t('landing:FORMS_PAGE_TITLE'),
-      action: () => {
-        navigation.navigate('Forms');
-      },
-      icon: FormsLogo,
-    },
-    {
-      label: t('landing:API_PAGE_TITLE'),
-      action: () => {
-        navigation.navigate('Api');
-      },
-      icon: ApiLogo,
-    },
-    {
-      label: t('landing:LOCAL_STORAGE_PAGE_TITLE'),
-      action: () => {
-        navigation.navigate('LocalStorage');
-      },
-      icon: DatabaseLogo,
-    },
-    {
-      label: t('landing:REDUX_TITLE'),
-      action: () => {
-        navigation.navigate('Redux');
-      },
-      icon: ReduxLogo,
-    },
-  ];
-  const colNum = data.length / 2;
+  const [SlideInLeft, setSlideInLeft] = useState(new Animated.Value(0));
 
-  const changeLanguageEn = () => {
-    i18n.changeLanguage('en');
-  };
+  useFocusEffect(
+    React.useCallback(() => {
+      setLanding({ tabBarVisible: true });
+    }, []),
+  );
 
-  const changeLanguageAr = () => {
-    i18n.changeLanguage('ar');
-  };
+  useEffect(() => {
+    async function fetchData() {
+      await getNewsInfo('business AND sports AND (eg OR ua)');
+    }
+    fetchData();
+  }, []);
 
-  const renderItems = ({ item }: any) => {
-    return (
-      <View style={{ flex: 1 / colNum }}>
-        <SquareCard length={width * 0.5 - 2} onPress={item.action}>
-          <Image source={item.icon} />
-          <Text>{item.label}</Text>
-        </SquareCard>
-      </View>
-    );
+  useEffect(() => {
+    return Animated.parallel([
+      Animated.timing(SlideInLeft, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const handleArticleClick = async (article) => {
+    setLanding({ tabBarVisible: false, selectedArticle: article });
+
+    const timestamp = getCurrentTimeStamp();
+    let history = Object.assign({}, article);
+    history.timestamp = timestamp;
+
+    if (viewedHistory.length === 0 || viewedHistory === null) {
+      const insertedItem = [];
+      insertedItem.push(history);
+      setLanding({ viewedHistory: insertedItem });
+    } else {
+      setLanding({ viewedHistory: [...viewedHistory, history] });
+    }
+    navigation.navigate('Article');
   };
 
   return (
-    <View style={styles.conatiner}>
-      <View style={styles.upperHalf}>
-        <RentsLogo />
-      </View>
-      <View style={styles.lowerHalf}>
-        <FlatList
-          numColumns={colNum}
-          data={data}
-          renderItem={renderItems}
-          keyExtractor={({ label }) => label}
-        />
-      </View>
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => {
-            changeLanguageEn();
-          }}>
-          <Text style={styles.text}>{t('landing:ENGLISH_BUTTON')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => {
-            changeLanguageAr();
-          }}>
-          <Text style={styles.text}>{t('landing:ARABIC_BUTTON')}</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.footer}>
-        <Text>By</Text>
-        <AreebaLogo />
-      </View>
+    <View style={styles.container}>
+      <View style={styles.btn} />
+      <Animated.View
+        style={[
+          styles.newsContainer,
+          {
+            transform: [
+              {
+                translateY: SlideInLeft.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [600, 0],
+                }),
+              },
+            ],
+          },
+        ]}>
+        <Title text="Top Headlines" styled={styles.headlinesTitle} />
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+          {pending ? (
+            <View>
+              <View>
+                <ContentPlaceHolder width={width} height={200} />
+                <ContentPlaceHolder width={width} height={200} />
+                <ContentPlaceHolder width={width} height={200} />
+              </View>
+            </View>
+          ) : (
+            news?.articles?.map((article: any, index: number) => {
+              return (
+                <NewsContainer
+                  article={article}
+                  key={index}
+                  handleClick={() => {
+                    handleArticleClick(article);
+                  }}
+                />
+              );
+            })
+          )}
+        </ScrollView>
+      </Animated.View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  button: {
-    backgroundColor: '#fc799a',
-    borderRadius: 10,
-    padding: 10,
-    width: '40%',
-  },
-  buttonContainer: {
+  btn: {
+    alignItems: 'flex-end',
+    borderRadius: 6,
     display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 10,
-    marginTop: 20,
+    height: 40,
+    marginTop: 29,
+    padding: 20,
+    width: '100%',
   },
-  conatiner: {
+
+  container: {
+    alignItems: 'center',
+    backgroundColor: colorPalette.darkNavy1,
     flex: 1,
   },
-  footer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lowerHalf: {
-    flex: 0.6,
-  },
-  text: {
-    fontSize: 12,
+
+  headlinesTitle: {
+    fontSize: 20,
+    marginVertical: 5,
     textAlign: 'center',
   },
-  upperHalf: {
-    alignItems: 'center',
-    flex: 0.3,
+
+  newsContainer: {
+    backgroundColor: 'rgb(237, 233, 234)',
+    borderTopEndRadius: 30,
+    borderTopStartRadius: 30,
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    height: '100%',
     justifyContent: 'center',
+    padding: 10,
+    width: '100%',
   },
 });
 
-/**
- * Maps state variables from redux store to props of currect component
- * @param state
- */
 const mapStateToProps = (state: RootState) => ({
-  // Map your redux state to your props here
+  news: state.landing.news,
+  pending: state.landing.pending,
+  viewedHistory: state.landing.viewedHistory,
 });
 
-/**
- * Maps actions from slices to props
- */
 const mapDispatchToProps = {
-  // map your actions here ex:
-  // increment : counterActions.increment
   logout: landingActions.reset,
+  getNewsInfo: landingActions.getNewsInfoApi,
+  setLanding: landingActions.setLanding,
+  setHistory: historyActions.setHistory,
 };
 
-/**
- * Connects component to redux store
- */
 const connector = connect(mapStateToProps, mapDispatchToProps);
 const LandingComponentRedux = connector(LandingComponent);
 
